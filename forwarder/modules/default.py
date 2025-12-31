@@ -1,12 +1,12 @@
-from telegram import Update
-from telegram.ext import ContextTypes, CommandHandler, filters
-from telegram.constants import ParseMode
+from pyrogram import filters
+from pyrogram.types import Message
+from pyrogram.enums import ParseMode
 
-from forwarder import bot, OWNER_ID
+from forwarder import app, OWNER_ID
 
 PM_START_TEXT = """
 Hey {}, I'm {}!
-I'm a bot used to forward messages from one chat to another.
+I'm a userbot used to forward messages from one chat to another.
 
 To obtain a list of commands, use /help.
 """
@@ -16,37 +16,30 @@ Here is a list of usable commands:
  - /start : Starts the bot.
  - /help : Sends you this help message.
 
-just send /id in private chat/group/channel and i will reply it's id.
+Just send /id in private chat/group/channel and I will reply its id.
 """
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = update.effective_chat
-    message = update.effective_message
-    user = update.effective_user
-    if not (chat and message and user):
-        return
+@app.on_message(filters.command("start") & filters.user(OWNER_ID))
+async def start(client, message: Message):
+    chat = message.chat
+    user = message.from_user
 
-    if chat.type == "private":
-        await message.reply_text(
-            PM_START_TEXT.format(user.first_name, context.bot.first_name),
+    if chat.type.value == "private":
+        me = await client.get_me()
+        await message.reply(
+            PM_START_TEXT.format(user.first_name, me.first_name),
             parse_mode=ParseMode.HTML,
         )
     else:
-        await message.reply_text("I'm up and running!")
+        await message.reply("I'm up and running!")
 
 
-async def help(update: Update, _):
-    chat = update.effective_chat
-    message = update.effective_message
-    if not (chat and message):
-        return
+@app.on_message(filters.command("help") & filters.user(OWNER_ID))
+async def help_command(client, message: Message):
+    chat = message.chat
 
-    if not chat.type == "private":
-        await message.reply_text("Contact me via PM to get a list of usable commands.")
+    if chat.type.value != "private":
+        await message.reply("Contact me via PM to get a list of usable commands.")
     else:
-        await message.reply_text(PM_HELP_TEXT)
-
-
-bot.add_handler(CommandHandler("start", start, filters=filters.User(OWNER_ID)))
-bot.add_handler(CommandHandler("help", help, filters=filters.User(OWNER_ID)))
+        await message.reply(PM_HELP_TEXT)
