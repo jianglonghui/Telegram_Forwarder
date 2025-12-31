@@ -4,10 +4,9 @@ from typing import List
 
 
 def predicate_text(filters: List[str], text: str) -> bool:
-    """Check if the text contains any of the filters"""
-    for i in filters:
-        pattern = r"( |^|[^\w])" + re.escape(i) + r"( |$|[^\w])"
-        if re.search(pattern, text, flags=re.IGNORECASE):
+    """Check if the text contains any of the filters (包含匹配)"""
+    text_lower = text.lower()
+    for keyword in filters:
+        if keyword.lower() in text_lower:
             return True
-
     return False
