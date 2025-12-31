@@ -42,6 +42,11 @@ if not API_ID or not API_HASH:
 OWNER_ID = int(getenv("OWNER_ID", "0"))
 REMOVE_TAG = getenv("REMOVE_TAG", "False") in {"true", "True", "1"}
 
+# AI 叙事总结配置
+DEEPSEEK_API_KEY = getenv("DEEPSEEK_API_KEY", "")
+ENABLE_NARRATIVE = getenv("ENABLE_NARRATIVE", "False") in {"true", "True", "1"}
+NARRATIVE_CONTEXT = int(getenv("NARRATIVE_CONTEXT", "10"))  # 上下文消息数
+
 # 心跳配置
 HEARTBEAT_CHAT = getenv("HEARTBEAT_CHAT", "")  # "me" 或群组ID
 HEARTBEAT_INTERVAL = int(getenv("HEARTBEAT_INTERVAL", "30"))  # 分钟

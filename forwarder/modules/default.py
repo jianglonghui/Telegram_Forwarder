@@ -44,6 +44,12 @@ PM_HELP_TEXT = """
 • 黑名单: 不转发包含这些词的消息
 • 多个词/编号用逗号分隔
 • 特殊过滤词: `0x` 匹配EVM合约, `ca` 匹配Solana合约
+• 多个词用逗号分隔
+• 使用 /id 在群组中获取群组ID
+
+**AI 叙事功能:**
+启用后，匹配关键词时会自动生成上下文总结
+配置 DEEPSEEK_API_KEY 和 ENABLE_NARRATIVE=True
 """
 
 

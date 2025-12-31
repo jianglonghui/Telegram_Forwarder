@@ -1,6 +1,6 @@
 import re
 
-from typing import List
+from typing import List, Optional
 
 
 # EVM 合约地址：0x + 40位十六进制
@@ -41,3 +41,13 @@ def predicate_text(filters: List[str], text: str) -> bool:
             return True
 
     return False
+
+
+def find_matched_keyword(filters: List[str], text: str) -> Optional[str]:
+    """Find and return the first matched keyword from filters"""
+    for keyword in filters:
+        pattern = r"( |^|[^\w])" + re.escape(keyword) + r"( |$|[^\w])"
+        if re.search(pattern, text, flags=re.IGNORECASE):
+            return keyword
+
+    return None

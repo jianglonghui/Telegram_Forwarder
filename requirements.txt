@@ -1,3 +1,4 @@
 pyrogram>=2.0.0 ; python_version >= "3.9" and python_version < "4.0"
 tgcrypto>=1.2.5 ; python_version >= "3.9" and python_version < "4.0"
 python-dotenv==1.0.0 ; python_version >= "3.9" and python_version < "4.0"
+httpx>=0.24.0 ; python_version >= "3.9" and python_version < "4.0"
