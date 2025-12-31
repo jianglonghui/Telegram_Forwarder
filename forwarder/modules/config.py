@@ -21,6 +21,22 @@ def reload_forward_handler():
     reload_config()
 
 
+def parse_indices(arg: str, max_len: int) -> list:
+    """解析逗号分隔的编号，返回有效的索引列表（从0开始）"""
+    indices = []
+    for part in arg.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            idx = int(part) - 1
+            if 0 <= idx < max_len and idx not in indices:
+                indices.append(idx)
+        except ValueError:
+            continue
+    return indices
+
+
 @app.on_message(filters.command("add") & filters.user(OWNER_ID))
 async def add_forward(client, message: Message):
     """
@@ -104,33 +120,35 @@ async def list_forwards(client, message: Message):
 async def remove_forward(client, message: Message):
     """
     删除转发规则
-    用法: /remove <规则编号>
-    示例: /remove 1
+    用法: /remove <规则编号> 或 /remove <编号1,编号2,编号3>
+    示例: /remove 1 或 /remove 1,2,3
     """
     args = message.text.split()[1:]
 
     if not args:
         return await message.reply(
             "**用法:** `/remove <规则编号>`\n"
+            "支持多个编号: `/remove 1,2,3`\n"
             "使用 /list 查看规则编号",
             parse_mode=ParseMode.MARKDOWN
         )
 
-    try:
-        index = int(args[0]) - 1
-    except ValueError:
-        return await message.reply("规则编号必须是数字")
-
-    if index < 0 or index >= len(CONFIG):
+    indices = parse_indices(args[0], len(CONFIG))
+    if not indices:
         return await message.reply(f"规则编号无效，当前共有 {len(CONFIG)} 条规则")
 
-    removed = CONFIG.pop(index)
+    # 从大到小排序，避免删除时索引变化
+    indices.sort(reverse=True)
+    removed_list = []
+    for idx in indices:
+        removed = CONFIG.pop(idx)
+        removed_list.append(f"#{idx + 1} (源: `{removed['source']}`)")
+
     save_config()
     reload_forward_handler()
 
     await message.reply(
-        f"**已删除规则 #{index + 1}**\n"
-        f"源: `{removed['source']}`",
+        f"**已删除 {len(removed_list)} 条规则:**\n" + "\n".join(removed_list),
         parse_mode=ParseMode.MARKDOWN
     )
 
@@ -208,42 +226,41 @@ async def add_filter(client, message: Message):
     """
     为现有规则添加过滤词
     用法: /addfilter <规则编号> <过滤词1,过滤词2>
-    示例: /addfilter 1 BTC,ETH
+    示例: /addfilter 1 BTC,ETH 或 /addfilter 1,2,3 BTC,ETH
     """
     args = message.text.split()[1:]
 
     if len(args) < 2:
         return await message.reply(
             "**用法:** `/addfilter <规则编号> <过滤词>`\n"
-            "示例: `/addfilter 1 BTC,ETH`",
+            "支持多个编号: `/addfilter 1,2,3 BTC,ETH`",
             parse_mode=ParseMode.MARKDOWN
         )
 
-    try:
-        index = int(args[0]) - 1
-    except ValueError:
-        return await message.reply("规则编号必须是数字")
-
-    if index < 0 or index >= len(CONFIG):
+    indices = parse_indices(args[0], len(CONFIG))
+    if not indices:
         return await message.reply(f"规则编号无效，当前共有 {len(CONFIG)} 条规则")
 
     new_filters = [f.strip() for f in args[1].split(",") if f.strip()]
     if not new_filters:
         return await message.reply("请提供有效的过滤词")
 
-    if "filters" not in CONFIG[index]:
-        CONFIG[index]["filters"] = []
+    results = []
+    for idx in indices:
+        if "filters" not in CONFIG[idx]:
+            CONFIG[idx]["filters"] = []
+        added = []
+        for f in new_filters:
+            if f not in CONFIG[idx]["filters"]:
+                CONFIG[idx]["filters"].append(f)
+                added.append(f)
+        if added:
+            results.append(f"规则 #{idx + 1}: {', '.join(added)}")
 
-    added = []
-    for f in new_filters:
-        if f not in CONFIG[index]["filters"]:
-            CONFIG[index]["filters"].append(f)
-            added.append(f)
-
-    if added:
+    if results:
         save_config()
         reload_forward_handler()
-        await message.reply(f"已为规则 #{index + 1} 添加过滤词: {', '.join(added)}")
+        await message.reply("**已添加过滤词:**\n" + "\n".join(results), parse_mode=ParseMode.MARKDOWN)
     else:
         await message.reply("所有过滤词已存在")
 
@@ -253,42 +270,41 @@ async def add_blacklist(client, message: Message):
     """
     为现有规则添加黑名单词
     用法: /addblack <规则编号> <黑名单词1,黑名单词2>
-    示例: /addblack 1 广告,推广
+    示例: /addblack 1 广告,推广 或 /addblack 1,2,3 广告,推广
     """
     args = message.text.split()[1:]
 
     if len(args) < 2:
         return await message.reply(
             "**用法:** `/addblack <规则编号> <黑名单词>`\n"
-            "示例: `/addblack 1 广告,推广`",
+            "支持多个编号: `/addblack 1,2,3 广告,推广`",
             parse_mode=ParseMode.MARKDOWN
         )
 
-    try:
-        index = int(args[0]) - 1
-    except ValueError:
-        return await message.reply("规则编号必须是数字")
-
-    if index < 0 or index >= len(CONFIG):
+    indices = parse_indices(args[0], len(CONFIG))
+    if not indices:
         return await message.reply(f"规则编号无效，当前共有 {len(CONFIG)} 条规则")
 
     new_blacklist = [b.strip() for b in args[1].split(",") if b.strip()]
     if not new_blacklist:
         return await message.reply("请提供有效的黑名单词")
 
-    if "blacklist" not in CONFIG[index]:
-        CONFIG[index]["blacklist"] = []
+    results = []
+    for idx in indices:
+        if "blacklist" not in CONFIG[idx]:
+            CONFIG[idx]["blacklist"] = []
+        added = []
+        for b in new_blacklist:
+            if b not in CONFIG[idx]["blacklist"]:
+                CONFIG[idx]["blacklist"].append(b)
+                added.append(b)
+        if added:
+            results.append(f"规则 #{idx + 1}: {', '.join(added)}")
 
-    added = []
-    for b in new_blacklist:
-        if b not in CONFIG[index]["blacklist"]:
-            CONFIG[index]["blacklist"].append(b)
-            added.append(b)
-
-    if added:
+    if results:
         save_config()
         reload_forward_handler()
-        await message.reply(f"已为规则 #{index + 1} 添加黑名单: {', '.join(added)}")
+        await message.reply("**已添加黑名单:**\n" + "\n".join(results), parse_mode=ParseMode.MARKDOWN)
     else:
         await message.reply("所有黑名单词已存在")
 
@@ -297,53 +313,63 @@ async def add_blacklist(client, message: Message):
 async def clear_filter(client, message: Message):
     """
     清除规则的过滤词
-    用法: /clearfilter <规则编号>
+    用法: /clearfilter <规则编号> 或 /clearfilter <编号1,编号2>
     """
     args = message.text.split()[1:]
 
     if not args:
-        return await message.reply("**用法:** `/clearfilter <规则编号>`", parse_mode=ParseMode.MARKDOWN)
+        return await message.reply(
+            "**用法:** `/clearfilter <规则编号>`\n"
+            "支持多个编号: `/clearfilter 1,2,3`",
+            parse_mode=ParseMode.MARKDOWN
+        )
 
-    try:
-        index = int(args[0]) - 1
-    except ValueError:
-        return await message.reply("规则编号必须是数字")
+    indices = parse_indices(args[0], len(CONFIG))
+    if not indices:
+        return await message.reply(f"规则编号无效，当前共有 {len(CONFIG)} 条规则")
 
-    if index < 0 or index >= len(CONFIG):
-        return await message.reply(f"规则编号无效")
+    cleared = []
+    for idx in indices:
+        if "filters" in CONFIG[idx]:
+            del CONFIG[idx]["filters"]
+            cleared.append(f"#{idx + 1}")
 
-    if "filters" in CONFIG[index]:
-        del CONFIG[index]["filters"]
+    if cleared:
         save_config()
         reload_forward_handler()
-        await message.reply(f"已清除规则 #{index + 1} 的所有过滤词")
+        await message.reply(f"已清除规则 {', '.join(cleared)} 的所有过滤词")
     else:
-        await message.reply("该规则没有过滤词")
+        await message.reply("这些规则没有过滤词")
 
 
 @app.on_message(filters.command("clearblack") & filters.user(OWNER_ID))
 async def clear_blacklist(client, message: Message):
     """
     清除规则的黑名单
-    用法: /clearblack <规则编号>
+    用法: /clearblack <规则编号> 或 /clearblack <编号1,编号2>
     """
     args = message.text.split()[1:]
 
     if not args:
-        return await message.reply("**用法:** `/clearblack <规则编号>`", parse_mode=ParseMode.MARKDOWN)
+        return await message.reply(
+            "**用法:** `/clearblack <规则编号>`\n"
+            "支持多个编号: `/clearblack 1,2,3`",
+            parse_mode=ParseMode.MARKDOWN
+        )
 
-    try:
-        index = int(args[0]) - 1
-    except ValueError:
-        return await message.reply("规则编号必须是数字")
+    indices = parse_indices(args[0], len(CONFIG))
+    if not indices:
+        return await message.reply(f"规则编号无效，当前共有 {len(CONFIG)} 条规则")
 
-    if index < 0 or index >= len(CONFIG):
-        return await message.reply(f"规则编号无效")
+    cleared = []
+    for idx in indices:
+        if "blacklist" in CONFIG[idx]:
+            del CONFIG[idx]["blacklist"]
+            cleared.append(f"#{idx + 1}")
 
-    if "blacklist" in CONFIG[index]:
-        del CONFIG[index]["blacklist"]
+    if cleared:
         save_config()
         reload_forward_handler()
-        await message.reply(f"已清除规则 #{index + 1} 的所有黑名单词")
+        await message.reply(f"已清除规则 {', '.join(cleared)} 的所有黑名单词")
     else:
-        await message.reply("该规则没有黑名单")
+        await message.reply("这些规则没有黑名单")
