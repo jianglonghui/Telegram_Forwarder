@@ -158,33 +158,38 @@ async def add_destination(client, message: Message):
     """
     为现有规则添加目标
     用法: /adddest <规则编号> <目标ID>
-    示例: /adddest 1 -1009876543210
+    示例: /adddest 1 -1009876543210 或 /adddest 1,2,3 -1009876543210
     """
     args = message.text.split()[1:]
 
     if len(args) < 2:
         return await message.reply(
             "**用法:** `/adddest <规则编号> <目标ID>`\n"
-            "示例: `/adddest 1 -1009876543210`",
+            "支持多个编号: `/adddest 1,2,3 -1009876543210`",
             parse_mode=ParseMode.MARKDOWN
         )
 
     try:
-        index = int(args[0]) - 1
         dest = int(args[1])
     except ValueError:
-        return await message.reply("规则编号和目标ID必须是数字")
+        return await message.reply("目标ID必须是数字")
 
-    if index < 0 or index >= len(CONFIG):
+    indices = parse_indices(args[0], len(CONFIG))
+    if not indices:
         return await message.reply(f"规则编号无效，当前共有 {len(CONFIG)} 条规则")
 
-    if dest not in CONFIG[index]["destination"]:
-        CONFIG[index]["destination"].append(dest)
+    results = []
+    for idx in indices:
+        if dest not in CONFIG[idx]["destination"]:
+            CONFIG[idx]["destination"].append(dest)
+            results.append(f"#{idx + 1}")
+
+    if results:
         save_config()
         reload_forward_handler()
-        await message.reply(f"已为规则 #{index + 1} 添加目标: `{dest}`", parse_mode=ParseMode.MARKDOWN)
+        await message.reply(f"已为规则 {', '.join(results)} 添加目标: `{dest}`", parse_mode=ParseMode.MARKDOWN)
     else:
-        await message.reply("该目标已存在")
+        await message.reply("该目标在所有规则中已存在")
 
 
 @app.on_message(filters.command("removedest") & filters.user(OWNER_ID))
@@ -192,31 +197,36 @@ async def remove_destination(client, message: Message):
     """
     从现有规则删除目标
     用法: /removedest <规则编号> <目标ID>
-    示例: /removedest 1 -1009876543210
+    示例: /removedest 1 -1009876543210 或 /removedest 1,2,3 -1009876543210
     """
     args = message.text.split()[1:]
 
     if len(args) < 2:
         return await message.reply(
             "**用法:** `/removedest <规则编号> <目标ID>`\n"
-            "示例: `/removedest 1 -1009876543210`",
+            "支持多个编号: `/removedest 1,2,3 -1009876543210`",
             parse_mode=ParseMode.MARKDOWN
         )
 
     try:
-        index = int(args[0]) - 1
         dest = int(args[1])
     except ValueError:
-        return await message.reply("规则编号和目标ID必须是数字")
+        return await message.reply("目标ID必须是数字")
 
-    if index < 0 or index >= len(CONFIG):
+    indices = parse_indices(args[0], len(CONFIG))
+    if not indices:
         return await message.reply(f"规则编号无效，当前共有 {len(CONFIG)} 条规则")
 
-    if dest in CONFIG[index]["destination"]:
-        CONFIG[index]["destination"].remove(dest)
+    results = []
+    for idx in indices:
+        if dest in CONFIG[idx]["destination"]:
+            CONFIG[idx]["destination"].remove(dest)
+            results.append(f"#{idx + 1}")
+
+    if results:
         save_config()
         reload_forward_handler()
-        await message.reply(f"已从规则 #{index + 1} 删除目标: `{dest}`", parse_mode=ParseMode.MARKDOWN)
+        await message.reply(f"已从规则 {', '.join(results)} 删除目标: `{dest}`", parse_mode=ParseMode.MARKDOWN)
     else:
         await message.reply("该目标不存在")
 
