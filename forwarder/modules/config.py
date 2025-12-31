@@ -169,6 +169,40 @@ async def add_destination(client, message: Message):
         await message.reply("该目标已存在")
 
 
+@app.on_message(filters.command("removedest") & filters.user(OWNER_ID))
+async def remove_destination(client, message: Message):
+    """
+    从现有规则删除目标
+    用法: /removedest <规则编号> <目标ID>
+    示例: /removedest 1 -1009876543210
+    """
+    args = message.text.split()[1:]
+
+    if len(args) < 2:
+        return await message.reply(
+            "**用法:** `/removedest <规则编号> <目标ID>`\n"
+            "示例: `/removedest 1 -1009876543210`",
+            parse_mode=ParseMode.MARKDOWN
+        )
+
+    try:
+        index = int(args[0]) - 1
+        dest = int(args[1])
+    except ValueError:
+        return await message.reply("规则编号和目标ID必须是数字")
+
+    if index < 0 or index >= len(CONFIG):
+        return await message.reply(f"规则编号无效，当前共有 {len(CONFIG)} 条规则")
+
+    if dest in CONFIG[index]["destination"]:
+        CONFIG[index]["destination"].remove(dest)
+        save_config()
+        reload_forward_handler()
+        await message.reply(f"已从规则 #{index + 1} 删除目标: `{dest}`", parse_mode=ParseMode.MARKDOWN)
+    else:
+        await message.reply("该目标不存在")
+
+
 @app.on_message(filters.command("addfilter") & filters.user(OWNER_ID))
 async def add_filter(client, message: Message):
     """
