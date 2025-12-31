@@ -17,11 +17,17 @@ async def send_message(
     return await message.forward(chat_id)
 
 
-# 获取所有需要监听的源聊天 ID
-source_chats = [config.source.get_id() for config in get_config()]
+# 动态过滤器：每次消息到来时检查当前配置的源群列表
+def dynamic_source_filter():
+    async def func(flt, client, message: Message):
+        if message.chat is None:
+            return False
+        source_chats = [config.source.get_id() for config in get_config()]
+        return message.chat.id in source_chats
+    return filters.create(func)
 
 
-@app.on_message(filters.chat(source_chats) & ~filters.service)
+@app.on_message(dynamic_source_filter() & ~filters.service)
 async def forwarder(client, message: Message):
     if message is None or message.chat is None:
         return
