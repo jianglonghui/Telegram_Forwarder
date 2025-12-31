@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 from typing import List, Optional
 from pyrogram.types import Message
@@ -41,7 +42,10 @@ async def get_context_messages(client, chat_id: int, message_id: int, count: int
 
         messages.reverse()  # 按时间顺序排列
 
-        # 获取当前消息之后的消息（如果有的话）
+        # 等待15秒，让群友有时间回复
+        await asyncio.sleep(15)
+
+        # 获取当前消息之后的消息（群友的反应）
         after_messages = []
         async for msg in client.get_chat_history(chat_id, limit=count, offset_id=message_id - count):
             if msg.id > message_id and (msg.text or msg.caption):
