@@ -44,9 +44,32 @@ def predicate_text(filters: List[str], text: str) -> bool:
 
 
 def find_matched_keyword(filters: List[str], text: str) -> Optional[str]:
-    """Find and return the first matched keyword from filters"""
+    """
+    查找并返回第一个匹配的关键词
+
+    特殊关键词：
+    - "0x" → 匹配 EVM 合约地址，返回实际匹配到的地址
+    - "ca" → 匹配 Solana 合约地址，返回实际匹配到的地址
+    """
     for keyword in filters:
-        pattern = r"( |^|[^\w])" + re.escape(keyword) + r"( |$|[^\w])"
+        keyword_lower = keyword.lower().strip()
+
+        # 特殊关键词：EVM 合约地址
+        if keyword_lower == "0x":
+            match = EVM_CONTRACT_PATTERN.search(text)
+            if match:
+                return match.group()  # 返回实际匹配到的地址
+            continue
+
+        # 特殊关键词：Solana 合约地址
+        if keyword_lower == "ca":
+            match = SOLANA_CONTRACT_PATTERN.search(text)
+            if match:
+                return match.group()  # 返回实际匹配到的地址
+            continue
+
+        # 普通关键词：单词边界匹配
+        pattern = r"(?:^|[\s\W])" + re.escape(keyword) + r"(?:$|[\s\W])"
         if re.search(pattern, text, flags=re.IGNORECASE):
             return keyword
 
