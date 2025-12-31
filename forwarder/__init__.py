@@ -42,6 +42,10 @@ if not API_ID or not API_HASH:
 OWNER_ID = int(getenv("OWNER_ID", "0"))
 REMOVE_TAG = getenv("REMOVE_TAG", "False") in {"true", "True", "1"}
 
+# 心跳配置
+HEARTBEAT_CHAT = getenv("HEARTBEAT_CHAT", "")  # "me" 或群组ID
+HEARTBEAT_INTERVAL = int(getenv("HEARTBEAT_INTERVAL", "30"))  # 分钟
+
 # 代理配置
 PROXY_TYPE = getenv("PROXY_TYPE", "").lower()
 PROXY_HOST = getenv("PROXY_HOST", "")

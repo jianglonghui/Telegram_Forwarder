@@ -74,6 +74,21 @@ def get_config() -> List[ForwardConfig]:
     return PARSED_CONFIG
 
 
+def reload_config():
+    """重新加载配置（当配置被修改后调用）"""
+    global PARSED_CONFIG
+    PARSED_CONFIG = [
+        ForwardConfig(
+            source=chat["source"],
+            destination=chat["destination"],
+            filters=chat.get("filters"),
+            blacklist=chat.get("blacklist"),
+        )
+        for chat in CONFIG
+    ]
+    return PARSED_CONFIG
+
+
 def get_destination(chat_id: int, topic_id: Optional[int] = None) -> List[ForwardConfig]:
     """Get destination from a specific source chat
 
