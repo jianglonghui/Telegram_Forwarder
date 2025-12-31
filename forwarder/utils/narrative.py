@@ -3,7 +3,7 @@ import httpx
 from typing import List, Optional
 from pyrogram.types import Message
 
-from forwarder import DEEPSEEK_API_KEY, NARRATIVE_CONTEXT, LOGGER
+from forwarder import DEEPSEEK_API_KEY, GEMINI_API_KEY, NARRATIVE_CONTEXT, LOGGER
 
 DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
 
@@ -42,8 +42,8 @@ async def get_context_messages(client, chat_id: int, message_id: int, count: int
 
         messages.reverse()  # 按时间顺序排列
 
-        # 等待15秒，让群友有时间回复
-        await asyncio.sleep(15)
+        # 等待20秒，让群友有时间回复
+        await asyncio.sleep(20)
 
         # 获取当前消息之后的消息（群友的反应）
         after_messages = []
@@ -80,7 +80,6 @@ def format_context(messages: List[dict]) -> str:
 async def call_deepseek_api(prompt: str) -> Optional[str]:
     """调用 DeepSeek API 生成总结"""
     if not DEEPSEEK_API_KEY:
-        LOGGER.error("DeepSeek API key not configured")
         return None
 
     headers = {
@@ -98,8 +97,8 @@ async def call_deepseek_api(prompt: str) -> Optional[str]:
     }
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(DEEPSEEK_API_URL, headers=headers, json=data)
+        async with httpx.AsyncClient(timeout=30.0) as http_client:
+            response = await http_client.post(DEEPSEEK_API_URL, headers=headers, json=data)
             response.raise_for_status()
             result = response.json()
             return result["choices"][0]["message"]["content"]
@@ -108,14 +107,61 @@ async def call_deepseek_api(prompt: str) -> Optional[str]:
         return None
 
 
-async def generate_narrative(client, chat_id: int, message: Message, keyword: str) -> Optional[str]:
-    """生成叙事总结"""
+async def call_gemini_api(prompt: str) -> Optional[str]:
+    """调用 Gemini API 生成总结"""
+    if not GEMINI_API_KEY:
+        return None
+
+    try:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=GEMINI_API_KEY)
+
+        model = "gemini-3-flash-preview"
+        contents = [
+            types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=prompt)],
+            ),
+        ]
+
+        # 使用同步调用，包装在异步中
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: client.models.generate_content(
+                model=model,
+                contents=contents,
+            )
+        )
+
+        return response.text
+
+    except Exception as e:
+        LOGGER.error(f"Gemini API call failed: {e}")
+        return None
+
+
+def format_result(summary: str, keyword: str, user_name: str, provider: str) -> str:
+    """格式化输出结果"""
+    provider_emoji = "🔮" if provider == "Gemini" else "🤖"
+    result = f"📝 **AI 叙事总结** ({provider_emoji} {provider})\n"
+    result += f"🔑 关键词: `{keyword}`\n"
+    result += f"👤 提及者: {user_name}\n"
+    result += f"━━━━━━━━━━━━━━━\n"
+    result += summary
+    return result
+
+
+async def generate_narrative(client, chat_id: int, message: Message, keyword: str) -> List[str]:
+    """生成叙事总结，返回所有可用 AI 的结果列表"""
     # 获取上下文消息
     context_messages = await get_context_messages(client, chat_id, message.id)
 
     if not context_messages:
         LOGGER.warning("No context messages found")
-        return None
+        return []
 
     # 格式化上下文
     context_text = format_context(context_messages)
@@ -123,21 +169,32 @@ async def generate_narrative(client, chat_id: int, message: Message, keyword: st
     # 构建 prompt
     prompt = NARRATIVE_PROMPT.format(keyword=keyword, context=context_text)
 
-    # 调用 API
-    summary = await call_deepseek_api(prompt)
+    # 获取用户名
+    user_name = "未知用户"
+    if message.from_user:
+        user_name = message.from_user.first_name or message.from_user.username or str(message.from_user.id)
 
-    if summary:
-        # 格式化输出
-        user_name = "未知用户"
-        if message.from_user:
-            user_name = message.from_user.first_name or message.from_user.username or str(message.from_user.id)
+    results = []
 
-        result = f"📝 **AI 叙事总结**\n"
-        result += f"🔑 关键词: `{keyword}`\n"
-        result += f"👤 提及者: {user_name}\n"
-        result += f"━━━━━━━━━━━━━━━\n"
-        result += summary
+    # 并行调用所有可用的 API
+    tasks = []
+    if DEEPSEEK_API_KEY:
+        tasks.append(("DeepSeek", call_deepseek_api(prompt)))
+    if GEMINI_API_KEY:
+        tasks.append(("Gemini", call_gemini_api(prompt)))
 
-        return result
+    if not tasks:
+        LOGGER.warning("No AI API key configured")
+        return []
 
-    return None
+    # 执行所有任务
+    for provider, task in tasks:
+        try:
+            summary = await task
+            if summary:
+                results.append(format_result(summary, keyword, user_name, provider))
+                LOGGER.info(f"{provider} narrative generated successfully")
+        except Exception as e:
+            LOGGER.error(f"{provider} narrative generation failed: {e}")
+
+    return results

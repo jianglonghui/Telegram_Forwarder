@@ -44,6 +44,7 @@ REMOVE_TAG = getenv("REMOVE_TAG", "False") in {"true", "True", "1"}
 
 # AI 叙事总结配置
 DEEPSEEK_API_KEY = getenv("DEEPSEEK_API_KEY", "")
+GEMINI_API_KEY = getenv("GEMINI_API_KEY", "")
 ENABLE_NARRATIVE = getenv("ENABLE_NARRATIVE", "False") in {"true", "True", "1"}
 NARRATIVE_CONTEXT = int(getenv("NARRATIVE_CONTEXT", "10"))  # 上下文消息数
 

@@ -6,7 +6,7 @@ from pyrogram.types import Message
 from pyrogram.errors import FloodWait
 from pyrogram.enums import ParseMode
 
-from forwarder import app, REMOVE_TAG, LOGGER, ENABLE_NARRATIVE, DEEPSEEK_API_KEY
+from forwarder import app, REMOVE_TAG, LOGGER, ENABLE_NARRATIVE, DEEPSEEK_API_KEY, GEMINI_API_KEY
 from forwarder.utils import get_destination, get_config, predicate_text
 from forwarder.utils.message import find_matched_keyword
 
@@ -73,8 +73,8 @@ async def forwarder(client, message: Message):
                 # 转发原消息
                 await send_message(message, chat.get_id(), chat.get_topic())
 
-                # 如果启用了叙事功能且有匹配的关键词
-                if ENABLE_NARRATIVE and DEEPSEEK_API_KEY and matched_keyword:
+                # 如果启用了叙事功能且有匹配的关键词（任一 API key 可用即可）
+                if ENABLE_NARRATIVE and (DEEPSEEK_API_KEY or GEMINI_API_KEY) and matched_keyword:
                     asyncio.create_task(
                         send_narrative(client, source.id, message, chat.get_id(), chat.get_topic(), matched_keyword)
                     )
@@ -88,20 +88,25 @@ async def forwarder(client, message: Message):
 
 
 async def send_narrative(client, source_chat_id: int, message: Message, dest_chat_id: int, thread_id: int, keyword: str):
-    """异步生成并发送叙事总结"""
+    """异步生成并发送叙事总结（支持多个 AI）"""
     try:
         from forwarder.utils.narrative import generate_narrative
 
         LOGGER.info(f"Generating narrative for keyword: {keyword}")
-        narrative = await generate_narrative(client, source_chat_id, message, keyword)
+        narratives = await generate_narrative(client, source_chat_id, message, keyword)
 
-        if narrative:
-            await client.send_message(
-                dest_chat_id,
-                narrative,
-                reply_to_message_id=thread_id,
-                parse_mode=ParseMode.MARKDOWN
-            )
-            LOGGER.info(f"Narrative sent to {dest_chat_id}")
+        # 发送所有 AI 生成的结果
+        for narrative in narratives:
+            try:
+                await client.send_message(
+                    dest_chat_id,
+                    narrative,
+                    reply_to_message_id=thread_id,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                LOGGER.info(f"Narrative sent to {dest_chat_id}")
+            except Exception as e:
+                LOGGER.error(f"Failed to send narrative message: {e}")
+
     except Exception as e:
-        LOGGER.error(f"Failed to send narrative: {e}")
+        LOGGER.error(f"Failed to generate narrative: {e}")
