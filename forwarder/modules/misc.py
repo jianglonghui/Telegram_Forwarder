@@ -44,4 +44,8 @@ async def get_id(client, message: Message):
             if forwarder_user:
                 result += f"\nThe forwarder ({forwarder_user.first_name}) ID: `{forwarder_user.id}`"
 
+        # 来源设置了隐私保护，无法获取 ID
+        if replied.forward_sender_name and not replied.forward_from and not replied.forward_from_chat:
+            result += f"\n\n⚠️ 原消息来源 **{replied.forward_sender_name}** 设置了隐私保护，无法获取其 ID"
+
     return await message.reply(result, parse_mode=ParseMode.MARKDOWN)
