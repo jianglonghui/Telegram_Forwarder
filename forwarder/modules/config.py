@@ -3,16 +3,23 @@ from pyrogram import filters
 from pyrogram.types import Message
 from pyrogram.enums import ParseMode
 
-from forwarder import OWNER_ID, app, CONFIG, LOGGER
+from forwarder import OWNER_ID, app, CONFIG, LOGGER, RUNTIME_CONFIG, RUNTIME_CONFIG_FILE
 
 CONFIG_FILE = "chat_list.json"
 
 
 def save_config():
-    """保存配置到文件"""
+    """保存转发配置到文件"""
     with open(CONFIG_FILE, "w") as f:
         json.dump(CONFIG, f, indent=4, ensure_ascii=False)
     LOGGER.info("Configuration saved to chat_list.json")
+
+
+def save_runtime_config():
+    """保存运行时配置到文件"""
+    with open(RUNTIME_CONFIG_FILE, "w") as f:
+        json.dump(RUNTIME_CONFIG, f, indent=4, ensure_ascii=False)
+    LOGGER.info(f"Runtime config saved to {RUNTIME_CONFIG_FILE}")
 
 
 def reload_forward_handler():
@@ -383,3 +390,49 @@ async def clear_blacklist(client, message: Message):
         await message.reply(f"已清除规则 {', '.join(cleared)} 的所有黑名单词")
     else:
         await message.reply("这些规则没有黑名单")
+
+
+@app.on_message(filters.command("setnews") & filters.user(OWNER_ID))
+async def set_news_token_chat(client, message: Message):
+    """
+    设置代币撮合推送的目标群组
+    用法: /setnews <群组ID> 或在目标群组发送 /setnews
+    """
+    args = message.text.split()[1:]
+
+    if args:
+        # 使用参数指定的群组ID
+        try:
+            chat_id = int(args[0])
+        except ValueError:
+            return await message.reply("群组ID必须是数字")
+    else:
+        # 使用当前群组
+        chat_id = message.chat.id
+
+    RUNTIME_CONFIG['news_token_chat'] = str(chat_id)
+    save_runtime_config()
+
+    await message.reply(
+        f"**代币撮合推送已设置**\n"
+        f"目标群组: `{chat_id}`",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
+@app.on_message(filters.command("getnews") & filters.user(OWNER_ID))
+async def get_news_token_chat(client, message: Message):
+    """查看当前代币撮合推送配置"""
+    chat_id = RUNTIME_CONFIG.get('news_token_chat', '')
+    if chat_id:
+        await message.reply(
+            f"**代币撮合推送配置**\n"
+            f"目标群组: `{chat_id}`",
+            parse_mode=ParseMode.MARKDOWN
+        )
+    else:
+        await message.reply(
+            "代币撮合推送未配置\n"
+            "使用 `/setnews <群组ID>` 或在目标群组发送 `/setnews` 设置",
+            parse_mode=ParseMode.MARKDOWN
+        )

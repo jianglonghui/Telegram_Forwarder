@@ -52,6 +52,28 @@ NARRATIVE_CONTEXT = int(getenv("NARRATIVE_CONTEXT", "10"))  # 上下文消息数
 HEARTBEAT_CHAT = getenv("HEARTBEAT_CHAT", "")  # "me" 或群组ID
 HEARTBEAT_INTERVAL = int(getenv("HEARTBEAT_INTERVAL", "30"))  # 分钟
 
+# 代币撮合推送群组
+NEWS_TOKEN_CHAT = getenv("NEWS_TOKEN_CHAT", "")
+
+# 运行时配置（从 runtime_config.json 加载，支持持久化）
+RUNTIME_CONFIG_FILE = "runtime_config.json"
+
+def load_runtime_config():
+    """加载运行时配置"""
+    config = {}
+    try:
+        if path.isfile(RUNTIME_CONFIG_FILE):
+            with open(RUNTIME_CONFIG_FILE, "r") as f:
+                config = json.load(f)
+    except Exception as e:
+        LOGGER.error(f"加载运行时配置失败: {e}")
+    # 环境变量作为默认值
+    if not config.get('news_token_chat') and NEWS_TOKEN_CHAT:
+        config['news_token_chat'] = NEWS_TOKEN_CHAT
+    return config
+
+RUNTIME_CONFIG = load_runtime_config()
+
 # 代理配置
 PROXY_TYPE = getenv("PROXY_TYPE", "").lower()
 PROXY_HOST = getenv("PROXY_HOST", "")

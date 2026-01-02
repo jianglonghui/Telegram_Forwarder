@@ -9,5 +9,10 @@ for module in ALL_MODULES:
 
 def run():
     LOGGER.info("Successfully loaded modules: " + str(ALL_MODULES))
+
+    # 启动 API 服务
+    from forwarder.modules.api import start_api_server
+    start_api_server(port=5060)
+
     LOGGER.info("Starting userbot...")
     app.run()
