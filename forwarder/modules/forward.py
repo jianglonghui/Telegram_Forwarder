@@ -20,7 +20,7 @@ async def send_message(
     return await message.forward(chat_id)
 
 
-async def send_alpha_call(contract: dict, group_id: int, group_name: str):
+async def send_alpha_call(contract: dict, group_id: int, group_name: str, sender: str = ''):
     """发送合约信息到 Alpha Call 服务"""
     try:
         async with aiohttp.ClientSession() as session:
@@ -28,7 +28,8 @@ async def send_alpha_call(contract: dict, group_id: int, group_name: str):
                 'contract_address': contract['address'],
                 'chain': contract['chain'],
                 'group_id': str(group_id),
-                'group_name': group_name or str(group_id)
+                'group_name': group_name or str(group_id),
+                'sender': sender
             }
             async with session.post(
                 f"{ALPHA_CALL_URL}/call",
@@ -37,7 +38,7 @@ async def send_alpha_call(contract: dict, group_id: int, group_name: str):
             ) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    LOGGER.info(f"[Alpha Call] {contract['address'][:10]}... from {group_name} (total: {data.get('total_calls', '?')})")
+                    LOGGER.info(f"[Alpha Call] {contract['address'][:10]}... from {sender or group_name} (total: {data.get('total_calls', '?')})")
                 else:
                     LOGGER.warning(f"[Alpha Call] HTTP {resp.status}")
     except Exception as e:
@@ -83,8 +84,16 @@ async def forwarder(client, message: Message):
         contracts = extract_contracts(message_text)
         if contracts:
             group_name = getattr(source, 'title', '') or getattr(source, 'username', '') or str(source.id)
+            # 获取发送人信息
+            sender = ''
+            if message.from_user:
+                sender = message.from_user.first_name or ''
+                if message.from_user.last_name:
+                    sender += ' ' + message.from_user.last_name
+                if message.from_user.username:
+                    sender = f"{sender} (@{message.from_user.username})" if sender else f"@{message.from_user.username}"
             for contract in contracts:
-                asyncio.create_task(send_alpha_call(contract, source.id, group_name))
+                asyncio.create_task(send_alpha_call(contract, source.id, group_name, sender))
 
     for config in dest:
         matched_keyword = None

@@ -436,3 +436,49 @@ async def get_news_token_chat(client, message: Message):
             "使用 `/setnews <群组ID>` 或在目标群组发送 `/setnews` 设置",
             parse_mode=ParseMode.MARKDOWN
         )
+
+
+@app.on_message(filters.command("setalpha") & filters.user(OWNER_ID))
+async def set_alpha_chat(client, message: Message):
+    """
+    设置 Alpha Call 翻倍推送的目标群组
+    用法: /setalpha <群组ID> 或在目标群组发送 /setalpha
+    """
+    args = message.text.split()[1:]
+
+    if args:
+        # 使用参数指定的群组ID
+        try:
+            chat_id = int(args[0])
+        except ValueError:
+            return await message.reply("群组ID必须是数字")
+    else:
+        # 使用当前群组
+        chat_id = message.chat.id
+
+    RUNTIME_CONFIG['alpha_chat'] = str(chat_id)
+    save_runtime_config()
+
+    await message.reply(
+        f"**Alpha Call 翻倍推送已设置**\n"
+        f"目标群组: `{chat_id}`",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
+@app.on_message(filters.command("getalpha") & filters.user(OWNER_ID))
+async def get_alpha_chat(client, message: Message):
+    """查看当前 Alpha Call 翻倍推送配置"""
+    chat_id = RUNTIME_CONFIG.get('alpha_chat', '')
+    if chat_id:
+        await message.reply(
+            f"**Alpha Call 翻倍推送配置**\n"
+            f"目标群组: `{chat_id}`",
+            parse_mode=ParseMode.MARKDOWN
+        )
+    else:
+        await message.reply(
+            "Alpha Call 翻倍推送未配置\n"
+            "使用 `/setalpha <群组ID>` 或在目标群组发送 `/setalpha` 设置",
+            parse_mode=ParseMode.MARKDOWN
+        )

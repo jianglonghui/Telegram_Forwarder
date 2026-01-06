@@ -68,6 +68,70 @@ def news_token():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@flask_app.route('/alpha_double', methods=['POST'])
+def alpha_double():
+    """接收 Alpha Call 翻倍通知并推送到 Telegram"""
+    chat_id = RUNTIME_CONFIG.get('alpha_chat', '')
+    if not chat_id:
+        return jsonify({'success': False, 'error': 'ALPHA_CHAT 未配置，使用 /setalpha 设置'}), 400
+
+    data = request.json
+    if not data:
+        return jsonify({'success': False, 'error': '无数据'}), 400
+
+    symbol = data.get('symbol', '')
+    address = data.get('address', '')
+    chain = data.get('chain', '')
+    start_mcap = data.get('start_mcap', 0)
+    current_mcap = data.get('current_mcap', 0)
+    gain_ratio = data.get('gain_ratio', 0)
+    group_name = data.get('group_name', '')
+    sender = data.get('sender', '')
+    elapsed_seconds = data.get('elapsed_seconds', 0)
+    history = data.get('history', [])
+
+    # 格式化市值
+    def fmt_mcap(mcap):
+        if mcap >= 1000000:
+            return f"${mcap/1000000:.1f}M"
+        elif mcap >= 1000:
+            return f"${mcap/1000:.0f}k"
+        return f"${mcap:.0f}"
+
+    # 构建消息
+    chain_emoji = "🟣" if chain == "SOL" else "🟡"
+    msg = f"🚀 **Alpha Call 翻倍!**\n\n"
+    msg += f"{chain_emoji} **{symbol or 'Unknown'}** ({chain})\n"
+    msg += f"📈 涨幅: **{gain_ratio:.1f}x**\n"
+    msg += f"💰 市值: {fmt_mcap(start_mcap)} → {fmt_mcap(current_mcap)}\n"
+    msg += f"⏱️ 用时: {elapsed_seconds}秒\n\n"
+
+    if sender:
+        msg += f"👤 发送人: {sender}\n"
+    if group_name:
+        msg += f"💬 来源群: {group_name}\n"
+    msg += f"\n📋 CA:\n`{address}`"
+
+    # 添加市值历史
+    if history and len(history) > 1:
+        msg += f"\n\n📊 市值变化:"
+        for h in history[-5:]:  # 最近5条
+            msg += f"\n  {h.get('time', 0)}s: {fmt_mcap(h.get('mcap', 0))}"
+
+    # 异步发送到 Telegram
+    try:
+        target_chat = int(chat_id)
+        asyncio.run_coroutine_threadsafe(
+            send_telegram_message(target_chat, msg),
+            tg_app.loop
+        )
+        LOGGER.info(f"[API] Alpha 翻倍推送: {symbol} {gain_ratio:.1f}x")
+        return jsonify({'success': True})
+    except Exception as e:
+        LOGGER.error(f"[API] Alpha 翻倍推送失败: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 async def send_telegram_message(chat_id: int, text: str):
     """发送消息到 Telegram"""
     from pyrogram.enums import ParseMode
