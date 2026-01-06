@@ -55,6 +55,51 @@ HEARTBEAT_INTERVAL = int(getenv("HEARTBEAT_INTERVAL", "30"))  # 分钟
 # 代币撮合推送群组
 NEWS_TOKEN_CHAT = getenv("NEWS_TOKEN_CHAT", "")
 
+# Alpha Call 服务配置
+def get_alpha_call_port():
+    """从运行中的进程获取端口"""
+    try:
+        import subprocess
+        # 1. 先找 alpha_call_service 的进程 ID
+        ps_result = subprocess.run(
+            ['pgrep', '-f', 'alpha_call_service'],
+            capture_output=True, text=True, timeout=5
+        )
+        pids = ps_result.stdout.strip().split('\n')
+        if not pids or not pids[0]:
+            raise Exception("未找到 alpha_call_service 进程")
+
+        # 2. 用 lsof 查找该进程监听的端口
+        for pid in pids:
+            if not pid.strip():
+                continue
+            lsof_result = subprocess.run(
+                ['lsof', '-P', '-n', '-p', pid.strip()],
+                capture_output=True, text=True, timeout=5
+            )
+            for line in lsof_result.stdout.split('\n'):
+                if 'TCP' in line and 'LISTEN' in line:
+                    # 格式: python 12345 user 5u IPv4 ... TCP *:5054 (LISTEN)
+                    parts = line.split()
+                    for part in parts:
+                        if ':' in part:
+                            port = part.split(':')[-1].replace('(LISTEN)', '')
+                            if port.isdigit():
+                                LOGGER.info(f"从进程 {pid} 发现 Alpha Call 端口: {port}")
+                                return port
+    except Exception as e:
+        LOGGER.debug(f"无法从进程获取端口: {e}")
+    # 回退到环境变量
+    
+    env_port = getenv("MEME_ALPHA_CALL_PORT") or getenv("ALPHA_CALL_PORT")
+    if env_port:
+        return env_port
+    return "5054"
+
+ALPHA_CALL_PORT = get_alpha_call_port()
+ALPHA_CALL_URL = getenv("ALPHA_CALL_URL", f"http://127.0.0.1:{ALPHA_CALL_PORT}")
+ENABLE_ALPHA_CALL = getenv("ENABLE_ALPHA_CALL", "True") in {"true", "True", "1"}
+
 # 运行时配置（从 runtime_config.json 加载，支持持久化）
 RUNTIME_CONFIG_FILE = "runtime_config.json"
 

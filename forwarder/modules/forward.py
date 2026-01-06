@@ -1,4 +1,5 @@
 import asyncio
+import aiohttp
 from typing import Union
 
 from pyrogram import filters
@@ -6,9 +7,9 @@ from pyrogram.types import Message
 from pyrogram.errors import FloodWait
 from pyrogram.enums import ParseMode
 
-from forwarder import app, REMOVE_TAG, LOGGER, ENABLE_NARRATIVE, DEEPSEEK_API_KEY, GEMINI_API_KEY
+from forwarder import app, REMOVE_TAG, LOGGER, ENABLE_NARRATIVE, DEEPSEEK_API_KEY, GEMINI_API_KEY, ALPHA_CALL_URL, ENABLE_ALPHA_CALL
 from forwarder.utils import get_destination, get_config, predicate_text
-from forwarder.utils.message import find_matched_keyword
+from forwarder.utils.message import find_matched_keyword, extract_contracts
 
 
 async def send_message(
@@ -17,6 +18,30 @@ async def send_message(
     if REMOVE_TAG:
         return await message.copy(chat_id, reply_to_message_id=thread_id)
     return await message.forward(chat_id)
+
+
+async def send_alpha_call(contract: dict, group_id: int, group_name: str):
+    """发送合约信息到 Alpha Call 服务"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            payload = {
+                'contract_address': contract['address'],
+                'chain': contract['chain'],
+                'group_id': str(group_id),
+                'group_name': group_name or str(group_id)
+            }
+            async with session.post(
+                f"{ALPHA_CALL_URL}/call",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=5)
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    LOGGER.info(f"[Alpha Call] {contract['address'][:10]}... from {group_name} (total: {data.get('total_calls', '?')})")
+                else:
+                    LOGGER.warning(f"[Alpha Call] HTTP {resp.status}")
+    except Exception as e:
+        LOGGER.debug(f"[Alpha Call] Failed: {e}")
 
 
 # 动态过滤器：每次消息到来时检查当前配置的源群列表
@@ -52,6 +77,14 @@ async def forwarder(client, message: Message):
 
     dest = get_destination(source.id, topic_id)
     message_text = message.text or message.caption or ""
+
+    # Alpha Call: 提取合约地址并发送到服务
+    if ENABLE_ALPHA_CALL and message_text:
+        contracts = extract_contracts(message_text)
+        if contracts:
+            group_name = getattr(source, 'title', '') or getattr(source, 'username', '') or str(source.id)
+            for contract in contracts:
+                asyncio.create_task(send_alpha_call(contract, source.id, group_name))
 
     for config in dest:
         matched_keyword = None

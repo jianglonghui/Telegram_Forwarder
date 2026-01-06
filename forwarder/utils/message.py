@@ -43,6 +43,40 @@ def predicate_text(filters: List[str], text: str) -> bool:
     return False
 
 
+def extract_contracts(text: str) -> List[dict]:
+    """
+    从文本中提取所有合约地址
+
+    返回: [{'address': '0x...', 'chain': 'EVM'}, {'address': '...', 'chain': 'SOL'}]
+    """
+    contracts = []
+
+    # 提取 EVM 合约地址
+    for match in EVM_CONTRACT_PATTERN.finditer(text):
+        addr = match.group()
+        # 避免重复
+        if not any(c['address'].lower() == addr.lower() for c in contracts):
+            contracts.append({'address': addr, 'chain': 'BSC'})
+
+    # 提取 Solana 合约地址
+    for match in SOLANA_CONTRACT_PATTERN.finditer(text):
+        addr = match.group()
+        # Solana 地址通常以特定字符开头，排除一些明显不是地址的
+        # 排除纯数字、常见单词等
+        if addr.isdigit():
+            continue
+        if len(addr) < 32:
+            continue
+        # 检查是否包含足够的大写字母（Solana 地址通常混合大小写）
+        if sum(1 for c in addr if c.isupper()) < 3:
+            continue
+        # 避免重复
+        if not any(c['address'] == addr for c in contracts):
+            contracts.append({'address': addr, 'chain': 'SOL'})
+
+    return contracts
+
+
 def find_matched_keyword(filters: List[str], text: str) -> Optional[str]:
     """
     查找并返回第一个匹配的关键词
