@@ -28,8 +28,14 @@ def news_token():
 
     tweet = data.get('tweet', '')
     author = data.get('author', '')
+    author_name = data.get('authorName', '')
+    tweet_type = data.get('type', '')
     tokens = data.get('tokens', [])
     keywords = data.get('keywords', [])
+    # 引用/转推信息
+    ref_author = data.get('refAuthor', '')
+    ref_author_name = data.get('refAuthorName', '')
+    ref_content = data.get('refContent', '')
 
     if not tokens:
         return jsonify({'success': False, 'error': '无匹配代币'}), 400
@@ -38,8 +44,32 @@ def news_token():
     keywords_str = ', '.join(keywords) if keywords else ''
 
     msg = f"🔔 **代币撮合**\n\n"
-    msg += f"👤 @{author}\n"
-    msg += f"📝 {tweet[:200]}{'...' if len(tweet) > 200 else ''}\n\n"
+    # 作者信息
+    if author_name:
+        msg += f"👤 **{author_name}** (@{author})\n"
+    else:
+        msg += f"👤 @{author}\n"
+
+    # 推文类型
+    if tweet_type:
+        type_labels = {
+            'retweet': '🔄 转推',
+            'quote': '💬 引用',
+            'reply': '↩️ 回复'
+        }
+        msg += f"{type_labels.get(tweet_type, tweet_type)}\n"
+
+    # 推文内容
+    msg += f"📝 {tweet[:500]}{'...' if len(tweet) > 500 else ''}\n\n"
+
+    # 引用/转推原文
+    if ref_content:
+        if ref_author_name:
+            msg += f"📎 原推 **{ref_author_name}** (@{ref_author}):\n"
+        elif ref_author:
+            msg += f"📎 原推 @{ref_author}:\n"
+        msg += f"{ref_content[:300]}{'...' if len(ref_content) > 300 else ''}\n\n"
+
     if keywords_str:
         msg += f"🔑 关键词: {keywords_str}\n\n"
 
@@ -49,7 +79,18 @@ def news_token():
         if isinstance(t, dict):
             symbol = t.get('symbol', '')
             ca = t.get('ca', '')
-            msg += f"• **{symbol}**\n`{ca}`\n"
+            source = t.get('source', '')  # new/old
+            method = t.get('method', '')  # ai/hardcoded
+            # 来源标签
+            source_label = '🆕新币' if source == 'new' else '📦老币' if source == 'old' else ''
+            # 匹配方式标签
+            method_label = '🤖AI' if method == 'ai' else '⚙️硬编码' if method == 'hardcoded' else ''
+            # 组合标签
+            tags = ' '.join(filter(None, [source_label, method_label]))
+            if tags:
+                msg += f"• **{symbol}** ({tags})\n`{ca}`\n"
+            else:
+                msg += f"• **{symbol}**\n`{ca}`\n"
         else:
             msg += f"• {t}\n"
 
@@ -136,6 +177,8 @@ async def send_telegram_message(chat_id: int, text: str):
     """发送消息到 Telegram"""
     from pyrogram.enums import ParseMode
     try:
+        # 先获取 chat 信息填充 peer 缓存
+        await tg_app.get_chat(chat_id)
         await tg_app.send_message(chat_id, text, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         LOGGER.error(f"[Telegram] 发送失败: {e}")
@@ -151,8 +194,39 @@ def start_api_server(port=5060):
     """在后台线程启动 API 服务（始终启动，可通过命令配置群组）"""
     thread = threading.Thread(target=run_flask, args=(port,), daemon=True)
     thread.start()
-    chat_id = RUNTIME_CONFIG.get('news_token_chat', '')
-    if chat_id:
-        LOGGER.info(f"[API] 代币撮合推送已启用，目标群组: {chat_id}")
+
+    # 发送启动通知
+    import time
+    time.sleep(2)  # 等待 Flask 启动
+
+    news_chat = RUNTIME_CONFIG.get('news_token_chat', '')
+    alpha_chat = RUNTIME_CONFIG.get('alpha_chat', '')
+
+    startup_msg = "🟢 **Telegram Forwarder 已启动**\n\n"
+    startup_msg += f"📡 API 服务: http://127.0.0.1:{port}\n"
+    startup_msg += f"⏰ 启动时间: {time.strftime('%Y-%m-%d %H:%M:%S')}"
+
+    if news_chat:
+        try:
+            asyncio.run_coroutine_threadsafe(
+                send_telegram_message(int(news_chat), startup_msg),
+                tg_app.loop
+            )
+            LOGGER.info(f"[API] 启动通知已发送到 news 群: {news_chat}")
+        except Exception as e:
+            LOGGER.error(f"[API] 发送启动通知到 news 群失败: {e}")
+
+    if alpha_chat and alpha_chat != news_chat:
+        try:
+            asyncio.run_coroutine_threadsafe(
+                send_telegram_message(int(alpha_chat), startup_msg),
+                tg_app.loop
+            )
+            LOGGER.info(f"[API] 启动通知已发送到 alpha 群: {alpha_chat}")
+        except Exception as e:
+            LOGGER.error(f"[API] 发送启动通知到 alpha 群失败: {e}")
+
+    if news_chat:
+        LOGGER.info(f"[API] 代币撮合推送已启用，目标群组: {news_chat}")
     else:
         LOGGER.info("[API] API 服务已启动，使用 /setnews <群组ID> 配置推送目标")
