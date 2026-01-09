@@ -3,11 +3,29 @@ API 接口模块 - 接收代币撮合推送
 """
 import asyncio
 import threading
+import time as time_module
 from flask import Flask, request, jsonify
+from pyrogram import filters
 
 from forwarder import app as tg_app, LOGGER, RUNTIME_CONFIG
 
 flask_app = Flask(__name__)
+
+# 全局等待队列：{chat_id: (Future, sent_time)}
+_pending_replies = {}
+
+
+@tg_app.on_message(filters.bot & filters.private)
+async def _on_bot_reply(client, message):
+    """监听 bot 回复"""
+    chat_id = message.chat.id
+    if chat_id in _pending_replies:
+        future, sent_time = _pending_replies.pop(chat_id)
+        if not future.done():
+            future.set_result({
+                'reply': message.text or '',
+                'reply_latency_ms': round((time_module.time() - sent_time) * 1000)
+            })
 
 
 @flask_app.route('/health', methods=['GET'])
@@ -109,6 +127,69 @@ def news_token():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@flask_app.route('/trade', methods=['POST'])
+def trade():
+    """接收交易指令并发送给交易机器人"""
+    chat_id = RUNTIME_CONFIG.get('trade_bot_chat', '')
+    if not chat_id:
+        return jsonify({'success': False, 'error': 'TRADE_BOT_CHAT 未配置，使用 /settrade 设置'}), 400
+
+    data = request.json
+    if not data:
+        return jsonify({'success': False, 'error': '无数据'}), 400
+
+    action = data.get('action', '').lower()  # buy/sell
+    address = data.get('address', '')
+    amount = data.get('amount', 0)
+
+    if action not in ['buy', 'sell']:
+        return jsonify({'success': False, 'error': 'action 必须是 buy 或 sell'}), 400
+
+    if not address:
+        return jsonify({'success': False, 'error': '缺少合约地址'}), 400
+
+    if not amount or amount <= 0:
+        return jsonify({'success': False, 'error': '金额必须大于0'}), 400
+
+    # 构建交易指令
+    cmd = f"/{action} {address} {amount}"
+    wait_reply = data.get('wait_reply', False)  # 是否等待机器人回复
+
+    try:
+        target_chat = int(chat_id)
+
+        if wait_reply:
+            # 等待机器人回复
+            future = asyncio.run_coroutine_threadsafe(
+                send_and_wait_reply(target_chat, cmd, timeout=10.0),
+                tg_app.loop
+            )
+            result = future.result(timeout=15)
+            LOGGER.info(f"[API] 交易指令: {cmd} (发送:{result.get('send_latency_ms')}ms, 回复:{result.get('reply_latency_ms')}ms)")
+            return jsonify({
+                'success': True,
+                'command': cmd,
+                'send_latency_ms': result.get('send_latency_ms'),
+                'reply_latency_ms': result.get('reply_latency_ms'),
+                'reply': result.get('reply'),
+                'timeout': result.get('timeout', False)
+            })
+        else:
+            # 只发送不等待
+            start_time = time_module.time()
+            future = asyncio.run_coroutine_threadsafe(
+                send_telegram_message(target_chat, cmd),
+                tg_app.loop
+            )
+            future.result(timeout=10)
+            elapsed_ms = (time_module.time() - start_time) * 1000
+            LOGGER.info(f"[API] 交易指令: {cmd} ({elapsed_ms:.0f}ms)")
+            return jsonify({'success': True, 'command': cmd, 'send_latency_ms': round(elapsed_ms)})
+    except Exception as e:
+        LOGGER.error(f"[API] 交易指令发送失败: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @flask_app.route('/alpha_double', methods=['POST'])
 def alpha_double():
     """接收 Alpha Call 翻倍通知并推送到 Telegram"""
@@ -184,20 +265,52 @@ async def send_telegram_message(chat_id: int, text: str):
         LOGGER.error(f"[Telegram] 发送失败: {e}")
 
 
+async def send_and_wait_reply(chat_id: int, text: str, timeout: float = 10.0):
+    """发送消息并等待机器人回复，返回回复内容和时延"""
+    future = asyncio.Future()
+    sent_time = time_module.time()
+    _pending_replies[chat_id] = (future, sent_time)
+
+    try:
+        await tg_app.get_chat(chat_id)
+        await tg_app.send_message(chat_id, text)
+        send_latency_ms = round((time_module.time() - sent_time) * 1000)
+
+        # 等待回复
+        result = await asyncio.wait_for(future, timeout=timeout)
+        result['send_latency_ms'] = send_latency_ms
+        return result
+    except asyncio.TimeoutError:
+        _pending_replies.pop(chat_id, None)
+        return {
+            'reply': None,
+            'timeout': True,
+            'send_latency_ms': round((time_module.time() - sent_time) * 1000)
+        }
+    except Exception as e:
+        _pending_replies.pop(chat_id, None)
+        LOGGER.error(f"[Telegram] 发送/等待回复失败: {e}")
+        return {'error': str(e)}
+
+
 def run_flask(port=5060):
     """运行 Flask 服务"""
     LOGGER.info(f"[API] 启动 Flask 服务: http://127.0.0.1:{port}")
     flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 
-def start_api_server(port=5060):
-    """在后台线程启动 API 服务（始终启动，可通过命令配置群组）"""
-    thread = threading.Thread(target=run_flask, args=(port,), daemon=True)
-    thread.start()
-
-    # 发送启动通知
+def _send_startup_notification(port):
+    """后台发送启动通知"""
     import time
-    time.sleep(2)  # 等待 Flask 启动
+    # 等待 Telegram 客户端启动完成
+    for _ in range(30):
+        if tg_app.is_connected:
+            break
+        time.sleep(1)
+
+    if not tg_app.is_connected:
+        LOGGER.warning("[API] Telegram 客户端未就绪，跳过启动通知")
+        return
 
     news_chat = RUNTIME_CONFIG.get('news_token_chat', '')
     alpha_chat = RUNTIME_CONFIG.get('alpha_chat', '')
@@ -230,3 +343,13 @@ def start_api_server(port=5060):
         LOGGER.info(f"[API] 代币撮合推送已启用，目标群组: {news_chat}")
     else:
         LOGGER.info("[API] API 服务已启动，使用 /setnews <群组ID> 配置推送目标")
+
+
+def start_api_server(port=5060):
+    """在后台线程启动 API 服务（始终启动，可通过命令配置群组）"""
+    thread = threading.Thread(target=run_flask, args=(port,), daemon=True)
+    thread.start()
+
+    # 后台发送启动通知（不阻塞）
+    notify_thread = threading.Thread(target=_send_startup_notification, args=(port,), daemon=True)
+    notify_thread.start()

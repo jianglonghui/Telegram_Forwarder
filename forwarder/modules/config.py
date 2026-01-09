@@ -482,3 +482,47 @@ async def get_alpha_chat(client, message: Message):
             "使用 `/setalpha <群组ID>` 或在目标群组发送 `/setalpha` 设置",
             parse_mode=ParseMode.MARKDOWN
         )
+
+
+@app.on_message(filters.command("settrade") & filters.user(OWNER_ID))
+async def set_trade_bot_chat(client, message: Message):
+    """
+    设置交易机器人的目标
+    用法: /settrade <Bot ID> 或在与 Bot 对话中发送 /settrade
+    """
+    args = message.text.split()[1:]
+
+    if args:
+        try:
+            chat_id = int(args[0])
+        except ValueError:
+            return await message.reply("Bot ID必须是数字")
+    else:
+        chat_id = message.chat.id
+
+    RUNTIME_CONFIG['trade_bot_chat'] = str(chat_id)
+    save_runtime_config()
+
+    await message.reply(
+        f"**交易机器人已设置**\n"
+        f"目标: `{chat_id}`",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
+@app.on_message(filters.command("gettrade") & filters.user(OWNER_ID))
+async def get_trade_bot_chat(client, message: Message):
+    """查看当前交易机器人配置"""
+    chat_id = RUNTIME_CONFIG.get('trade_bot_chat', '')
+    if chat_id:
+        await message.reply(
+            f"**交易机器人配置**\n"
+            f"目标: `{chat_id}`",
+            parse_mode=ParseMode.MARKDOWN
+        )
+    else:
+        await message.reply(
+            "交易机器人未配置\n"
+            "使用 `/settrade <Bot ID>` 或在与 Bot 对话中发送 `/settrade` 设置",
+            parse_mode=ParseMode.MARKDOWN
+        )
