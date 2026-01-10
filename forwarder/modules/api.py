@@ -211,6 +211,7 @@ def alpha_double():
     sender = data.get('sender', '')
     elapsed_seconds = data.get('elapsed_seconds', 0)
     history = data.get('history', [])
+    reason = data.get('reason', '')
 
     # 格式化市值
     def fmt_mcap(mcap):
@@ -220,11 +221,25 @@ def alpha_double():
             return f"${mcap/1000:.0f}k"
         return f"${mcap:.0f}"
 
+    # 根据 reason 显示不同标题和变化描述
+    if '翻倍' in reason:
+        title = "🚀 **Alpha Call 翻倍!**"
+        change_text = f"📈 涨幅: **{gain_ratio:.1f}x**"
+    elif '跌幅' in reason:
+        title = "📉 **Alpha Call 跌幅预警!**"
+        change_text = f"📉 跌幅: **-{(1-gain_ratio)*100:.0f}%**"
+    elif '区间变化' in reason:
+        title = "⚡ **Alpha Call 区间变化!**"
+        change_text = f"📊 变化: **{reason}**"
+    else:
+        title = "📢 **Alpha Call 通知**"
+        change_text = f"📊 比率: **{gain_ratio:.1f}x**"
+
     # 构建消息
     chain_emoji = "🟣" if chain == "SOL" else "🟡"
-    msg = f"🚀 **Alpha Call 翻倍!**\n\n"
+    msg = f"{title}\n\n"
     msg += f"{chain_emoji} **{symbol or 'Unknown'}** ({chain})\n"
-    msg += f"📈 涨幅: **{gain_ratio:.1f}x**\n"
+    msg += f"{change_text}\n"
     msg += f"💰 市值: {fmt_mcap(start_mcap)} → {fmt_mcap(current_mcap)}\n"
     msg += f"⏱️ 用时: {elapsed_seconds}秒\n\n"
 
