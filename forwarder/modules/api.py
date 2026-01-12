@@ -262,10 +262,10 @@ def alpha_double():
             send_telegram_message(target_chat, msg),
             tg_app.loop
         )
-        LOGGER.info(f"[API] Alpha 翻倍推送: {symbol} {gain_ratio:.1f}x")
+        LOGGER.info(f"[API] Alpha 推送: {symbol} {gain_ratio:.1f}x reason={reason}")
         return jsonify({'success': True})
     except Exception as e:
-        LOGGER.error(f"[API] Alpha 翻倍推送失败: {e}")
+        LOGGER.error(f"[API] Alpha 推送失败: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
