@@ -155,7 +155,7 @@ def format_result(summary: str, keyword: str, user_name: str, provider: str) -> 
 
 
 async def generate_narrative(client, chat_id: int, message: Message, keyword: str) -> List[str]:
-    """生成叙事总结，返回所有可用 AI 的结果列表"""
+    """生成叙事总结，优先使用 Gemini，失败时使用 DeepSeek"""
     # 获取上下文消息
     context_messages = await get_context_messages(client, chat_id, message.id)
 
@@ -174,27 +174,31 @@ async def generate_narrative(client, chat_id: int, message: Message, keyword: st
     if message.from_user:
         user_name = message.from_user.first_name or message.from_user.username or str(message.from_user.id)
 
-    results = []
-
-    # 并行调用所有可用的 API
-    tasks = []
-    if DEEPSEEK_API_KEY:
-        tasks.append(("DeepSeek", call_deepseek_api(prompt)))
+    # 优先使用 Gemini
     if GEMINI_API_KEY:
-        tasks.append(("Gemini", call_gemini_api(prompt)))
-
-    if not tasks:
-        LOGGER.warning("No AI API key configured")
-        return []
-
-    # 执行所有任务
-    for provider, task in tasks:
+        LOGGER.info("Trying Gemini API first")
         try:
-            summary = await task
+            summary = await call_gemini_api(prompt)
             if summary:
-                results.append(format_result(summary, keyword, user_name, provider))
-                LOGGER.info(f"{provider} narrative generated successfully")
+                LOGGER.info("Gemini narrative generated successfully")
+                return [format_result(summary, keyword, user_name, "Gemini")]
+            else:
+                LOGGER.warning("Gemini API returned empty result, falling back to DeepSeek")
         except Exception as e:
-            LOGGER.error(f"{provider} narrative generation failed: {e}")
+            LOGGER.error(f"Gemini API failed: {e}, falling back to DeepSeek")
 
-    return results
+    # Gemini 不可用或失败，使用 DeepSeek
+    if DEEPSEEK_API_KEY:
+        LOGGER.info("Using DeepSeek API")
+        try:
+            summary = await call_deepseek_api(prompt)
+            if summary:
+                LOGGER.info("DeepSeek narrative generated successfully")
+                return [format_result(summary, keyword, user_name, "DeepSeek")]
+            else:
+                LOGGER.warning("DeepSeek API returned empty result")
+        except Exception as e:
+            LOGGER.error(f"DeepSeek API failed: {e}")
+
+    LOGGER.warning("No AI API available or all APIs failed")
+    return []
